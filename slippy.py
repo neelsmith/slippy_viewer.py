@@ -38,8 +38,9 @@ def _(mo):
 
 
 @app.cell
-def _(IIIFViewer, image_info_url):
-    viewer = IIIFViewer(url=image_info_url.value.strip())
+def _(IIIFViewer, image_info_url, selected_canvas_info_url):
+    active_info_url = selected_canvas_info_url or image_info_url.value.strip()
+    viewer = IIIFViewer(url=active_info_url)
     return (viewer,)
 
 
@@ -71,7 +72,12 @@ def _(Path, anywidget, traitlets):
         _esm = Path(__file__).parent / "iiif_viewer.js"
         url = traitlets.Unicode().tag(sync=True)
 
-    return (IIIFViewer,)
+    class IIIFThumbnailGallery(anywidget.AnyWidget):
+        _esm = Path(__file__).parent / "iiif_thumbnails.js"
+        items_json = traitlets.Unicode("[]").tag(sync=True)
+        selected_info_url = traitlets.Unicode("").tag(sync=True)
+
+    return IIIFThumbnailGallery, IIIFViewer
 
 
 @app.cell(hide_code=True)
@@ -107,8 +113,23 @@ def _(jsonmanifest):
 
 
 @app.cell
-def _(mo, render_gallery, thumbnails):
-    mo.Html(render_gallery(thumbnails))
+def _(IIIFThumbnailGallery, json, thumbnails):
+    thumbnail_gallery = IIIFThumbnailGallery(items_json=json.dumps(thumbnails))
+    thumbnail_gallery
+    return (thumbnail_gallery,)
+
+
+@app.cell
+def _(thumbnail_gallery):
+    selected_canvas_info_url = thumbnail_gallery.selected_info_url.strip()
+    return (selected_canvas_info_url,)
+
+
+@app.cell
+def _(mo):
+    mo.md("""
+    Click a thumbnail to load that canvas in the slippy viewer above.
+    """)
     return
 
 
@@ -146,7 +167,7 @@ def _(html):
 
 
 
-    return (render_gallery,)
+    return
 
 
 @app.cell(hide_code=True)
@@ -224,10 +245,86 @@ def extract_thumbnails(manifest_input):
                     if isinstance(resource_item, dict):
                         canvas_thumb_url = thumb_from_service(resource_item.get("service"))
 
+        canvas_info_url = info_url_from_canvas(canvas_item)
+
         if canvas_thumb_url:
-            output.append((canvas_label, canvas_thumb_url))
+            output.append(
+                {
+                    "label": canvas_label,
+                    "thumb_url": canvas_thumb_url,
+                    "info_url": canvas_info_url,
+                }
+            )
 
     return output
+
+
+@app.function
+def info_url_from_service(service):
+    if isinstance(service, list) and service:
+        service = service[0]
+    if not isinstance(service, dict):
+        return ""
+    base = service.get("@id") or service.get("id")
+    if not base:
+        return ""
+    return f"{base.rstrip('/')}/info.json"
+
+
+@app.function
+def info_url_from_image_id(image_id):
+    if not isinstance(image_id, str) or not image_id.strip():
+        return ""
+    clean = image_id.strip()
+    marker = "/full/"
+    if marker in clean:
+        return f"{clean.split(marker, 1)[0].rstrip('/')}/info.json"
+    return ""
+
+
+@app.function
+def info_url_from_canvas(canvas_item):
+    if not isinstance(canvas_item, dict):
+        return ""
+
+    if isinstance(canvas_item.get("items"), list) and canvas_item["items"]:
+        anno_page = canvas_item["items"][0]
+        if isinstance(anno_page, dict) and isinstance(anno_page.get("items"), list) and anno_page["items"]:
+            anno = anno_page["items"][0]
+            if isinstance(anno, dict):
+                body = anno.get("body", {})
+                if isinstance(body, dict):
+                    service_info = info_url_from_service(body.get("service"))
+                    if service_info:
+                        return service_info
+                    body_id = body.get("id") or body.get("@id")
+                    derived = info_url_from_image_id(body_id)
+                    if derived:
+                        return derived
+
+    if isinstance(canvas_item.get("images"), list) and canvas_item["images"]:
+        image = canvas_item["images"][0]
+        if isinstance(image, dict):
+            resource = image.get("resource", {})
+            if isinstance(resource, dict):
+                service_info = info_url_from_service(resource.get("service"))
+                if service_info:
+                    return service_info
+                resource_id = resource.get("@id") or resource.get("id")
+                derived = info_url_from_image_id(resource_id)
+                if derived:
+                    return derived
+
+    thumbnail = canvas_item.get("thumbnail")
+    if isinstance(thumbnail, list) and thumbnail:
+        thumbnail = thumbnail[0]
+    if isinstance(thumbnail, dict):
+        thumb_id = thumbnail.get("id") or thumbnail.get("@id")
+        return info_url_from_image_id(thumb_id)
+    if isinstance(thumbnail, str):
+        return info_url_from_image_id(thumbnail)
+
+    return ""
 
 
 @app.function

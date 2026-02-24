@@ -28,6 +28,7 @@ function render({ model, el }) {
 
     let viewer;
     let stopListening = () => {};
+    let stopGlobalSelectionListening = () => {};
 
     loadOpenSeadragon().then((OpenSeadragon) => {
         viewer = OpenSeadragon({
@@ -45,10 +46,27 @@ function render({ model, el }) {
         openFromModel();
         model.on("change:url", openFromModel);
         stopListening = () => model.off("change:url", openFromModel);
+
+        const openFromThumbnailSelection = (event) => {
+            const selectedUrl = event?.detail?.url;
+            if (!selectedUrl) {
+                return;
+            }
+
+            model.set("url", selectedUrl);
+            model.save_changes();
+            viewer.open(selectedUrl);
+        };
+
+        window.addEventListener("iiif:select-info-url", openFromThumbnailSelection);
+        stopGlobalSelectionListening = () => {
+            window.removeEventListener("iiif:select-info-url", openFromThumbnailSelection);
+        };
     });
 
     return () => {
         stopListening();
+        stopGlobalSelectionListening();
         if (viewer) {
             viewer.destroy();
         }
