@@ -19,9 +19,27 @@ def _(mo):
     return
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    Enter a IIIF image `info.json` URL to open it in the slippy viewer.
+    """)
+    return
+
+
 @app.cell
-def _(IIIFViewer):
-    viewer = IIIFViewer(url="https://framemark.vam.ac.uk/collections/2006AN7529/info.json")
+def _(mo):
+    image_info_url = mo.ui.text(
+        value="https://framemark.vam.ac.uk/collections/2006AN7529/info.json",
+        label="IIIF image info URL",
+    )
+    image_info_url
+    return (image_info_url,)
+
+
+@app.cell
+def _(IIIFViewer, image_info_url):
+    viewer = IIIFViewer(url=image_info_url.value.strip())
     return (viewer,)
 
 
@@ -39,11 +57,243 @@ def _(mo):
     return
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ## IIIF Viewer class
+    """)
+    return
+
+
+@app.cell
+def _(Path, anywidget, traitlets):
+    class IIIFViewer(anywidget.AnyWidget):
+        _esm = Path(__file__).parent / "iiif_viewer.js"
+        url = traitlets.Unicode().tag(sync=True)
+
+    return (IIIFViewer,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ## Manifest thumbnails
+
+    Enter a IIIF manifest URL and browse its canvases as thumbnails.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    manifest_url = mo.ui.text(
+        value="https://iiif.harvardartmuseums.org/manifests/object/299843",
+        label="*Enter IIIF manifest URL*:",
+    )
+    manifest_url
+    return (manifest_url,)
+
+
+@app.cell
+def _(manifest_url, straight_fetch_json):
+    jsonmanifest = straight_fetch_json(manifest_url.value)
+    return (jsonmanifest,)
+
+
+@app.cell
+def _(jsonmanifest):
+    thumbsdata = extract_thumbnails(jsonmanifest)
+    return
+
+
+@app.cell
+def _(mo, render_gallery, thumbnails):
+    mo.Html(render_gallery(thumbnails))
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ### Create HTML display
+    """)
+    return
+
+
+@app.cell
+def _(html):
+    def render_gallery(thumbnails_input):
+        cards_local = []
+        for gallery_label, gallery_thumb_url in thumbnails_input:
+            safe_label_local = html.escape(gallery_label)
+            safe_thumb_local = html.escape(gallery_thumb_url)
+            cards_local.append(
+                f"""
+                <div style=\"border: 1px solid var(--gray-4); border-radius: 8px; padding: 8px;\">
+                    <img src=\"{safe_thumb_local}\" alt=\"{safe_label_local}\" style=\"width: 100%; height: 120px; object-fit: contain; display: block;\" />
+                    <div style=\"font-size: 0.85rem; margin-top: 6px; line-height: 1.25;\">{safe_label_local}</div>
+                </div>
+                """
+            )
+
+        return f"""
+        <div style=\"max-height: 520px; overflow-y: auto; padding-right: 4px;\">
+            <div style=\"display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px;\">
+                {''.join(cards_local)}
+            </div>
+        </div>
+        """
+
+
+
+    return (render_gallery,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ### Construct thumbnails from manifest
+    """)
+    return
+
+
+@app.cell
+def _(jsonmanifest):
+    thumbnails = extract_thumbnails(jsonmanifest)
+    return (thumbnails,)
+
+
+@app.function
+def thumb_from_service(service):
+    if isinstance(service, list) and service:
+        service = service[0]
+    if not isinstance(service, dict):
+        return ""
+    base = service.get("@id") or service.get("id")
+    if not base:
+        return ""
+    return f"{base.rstrip('/')}/full/240,/0/default.jpg"
+
+
+@app.function
+def thumb_from_thumbnail_field(thumbnail):
+    if isinstance(thumbnail, list) and thumbnail:
+        thumbnail = thumbnail[0]
+    if isinstance(thumbnail, str):
+        return thumbnail
+    if isinstance(thumbnail, dict):
+        return thumbnail.get("id") or thumbnail.get("@id") or ""
+    return ""
+
+
+@app.function
+def extract_thumbnails(manifest_input):
+    output = []
+    if not isinstance(manifest_input, dict):
+        return output
+
+    if isinstance(manifest_input.get("items"), list):
+        canvases_local = manifest_input.get("items", [])
+    elif isinstance(manifest_input.get("sequences"), list) and manifest_input["sequences"]:
+        canvases_local = manifest_input["sequences"][0].get("canvases", [])
+    else:
+        canvases_local = []
+
+    for canvas_index, canvas_item in enumerate(canvases_local, start=1):
+        if not isinstance(canvas_item, dict):
+            continue
+
+        canvas_label = pick_label(canvas_item.get("label")) or f"Canvas {canvas_index}"
+        canvas_thumb_url = thumb_from_thumbnail_field(canvas_item.get("thumbnail"))
+
+        if not canvas_thumb_url:
+            if isinstance(canvas_item.get("items"), list) and canvas_item["items"]:
+                anno_page_item = canvas_item["items"][0]
+                if isinstance(anno_page_item, dict) and isinstance(anno_page_item.get("items"), list) and anno_page_item["items"]:
+                    anno_item = anno_page_item["items"][0]
+                    if isinstance(anno_item, dict):
+                        body_item = anno_item.get("body", {})
+                        if isinstance(body_item, dict):
+                            canvas_thumb_url = thumb_from_service(body_item.get("service"))
+
+        if not canvas_thumb_url:
+            if isinstance(canvas_item.get("images"), list) and canvas_item["images"]:
+                image_item = canvas_item["images"][0]
+                if isinstance(image_item, dict):
+                    resource_item = image_item.get("resource", {})
+                    if isinstance(resource_item, dict):
+                        canvas_thumb_url = thumb_from_service(resource_item.get("service"))
+
+        if canvas_thumb_url:
+            output.append((canvas_label, canvas_thumb_url))
+
+    return output
+
+
+@app.function
+def pick_label(label_value):
+    if isinstance(label_value, str):
+        return label_value
+    if isinstance(label_value, list):
+        return str(label_value[0]) if label_value else ""
+    if isinstance(label_value, dict):
+        if "none" in label_value and isinstance(label_value["none"], list) and label_value["none"]:
+            return str(label_value["none"][0])
+        for value in label_value.values():
+            if isinstance(value, list) and value:
+                return str(value[0])
+    return ""
+
+
 @app.cell
 def _():
-    from pathlib import Path
+    #if manifest_error:
+    #    mo.md(f"⚠️ {manifest_error}")
+    #elif not thumbnails:
+    #    mo.md("No thumbnails found in this manifest.")
+    #else:
+    #    mo.Html(_render_gallery(thumbnails))
+    return
 
-    return (Path,)
+
+@app.cell
+def _():
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ### Data retrieval
+    """)
+    return
+
+
+@app.cell
+def _(json, urlopen):
+    def straight_fetch_json(url_input: str) -> dict:
+        with urlopen(url_input) as response:
+            return json.load(response)
+
+    return (straight_fetch_json,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ### Imports
+    """)
+    return
+
+
+@app.cell
+def _():
+    import html
+    import json
+    from urllib.error import URLError
+    from urllib.request import urlopen
+
+    return URLError, html, json, urlopen
 
 
 @app.cell
@@ -55,12 +305,38 @@ def _():
 
 
 @app.cell
-def _(Path, anywidget, traitlets):
-    class IIIFViewer(anywidget.AnyWidget):
-        _esm = Path(__file__).parent / "iiif_viewer.js"
-        url = traitlets.Unicode().tag(sync=True)
+def _():
+    from pathlib import Path
 
-    return (IIIFViewer,)
+    return (Path,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ### Deactivated
+    """)
+    return
+
+
+@app.cell
+def _(URLError, json):
+    def fancy_load_manifest(url_input: str):
+        if not url_input:
+            return None, ""
+
+        try:
+            return _fetch_json(url_input), ""
+        except URLError as fetch_error:
+            return None, f"Could not fetch manifest: {fetch_error}"
+        except json.JSONDecodeError:
+            return None, "Manifest response is not valid JSON."
+        except Exception as load_error:
+            return None, f"Unable to read manifest: {load_error}"
+
+
+
+    return
 
 
 if __name__ == "__main__":
