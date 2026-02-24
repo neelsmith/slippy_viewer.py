@@ -14,39 +14,20 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    # IIIF Viewer in marimo
+    # View images from IIIF manifest in marimo
     """)
     return
 
 
 @app.cell(hide_code=True)
-def _(mo):
-    mo.md("""
-    Enter a IIIF image `info.json` URL to open it in the slippy viewer.
-    """)
+def _(viewer):
+    viewer
     return
 
 
-@app.cell
-def _(mo):
-    image_info_url = mo.ui.text(
-        value="https://framemark.vam.ac.uk/collections/2006AN7529/info.json",
-        label="IIIF image info URL",
-    )
-    image_info_url
-    return (image_info_url,)
-
-
-@app.cell
-def _(IIIFViewer, image_info_url, selected_canvas_info_url):
-    active_info_url = selected_canvas_info_url or image_info_url.value.strip()
-    viewer = IIIFViewer(url=active_info_url)
-    return (viewer,)
-
-
-@app.cell
-def _(viewer):
-    viewer
+@app.cell(hide_code=True)
+def _(thumbnail_gallery):
+    thumbnail_gallery
     return
 
 
@@ -56,6 +37,32 @@ def _(mo):
     ## Computation
     """)
     return
+
+
+@app.cell
+def _(IIIFViewer, selected_canvas_info_url):
+    viewer = IIIFViewer(url=selected_canvas_info_url)
+    return (viewer,)
+
+
+@app.cell
+def _(thumbnails):
+    if thumbnails and isinstance(thumbnails[0], dict):
+        default_info_url = (thumbnails[0].get("info_url") or "").strip()
+    else:
+        default_info_url = ""
+
+
+    return (default_info_url,)
+
+
+@app.cell
+def _(IIIFThumbnailGallery, default_info_url, json, thumbnails):
+    thumbnail_gallery = IIIFThumbnailGallery(
+        items_json=json.dumps(thumbnails),
+        selected_info_url=default_info_url,
+    )
+    return (thumbnail_gallery,)
 
 
 @app.cell(hide_code=True)
@@ -84,19 +91,17 @@ def _(Path, anywidget, traitlets):
 def _(mo):
     mo.md("""
     ## Manifest thumbnails
-
-    Enter a IIIF manifest URL and browse its canvases as thumbnails.
     """)
     return
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(mo):
     manifest_url = mo.ui.text(
-        value="https://iiif.harvardartmuseums.org/manifests/object/299843",
+        value="https://manifests.sub.uni-goettingen.de/iiif/presentation/PPN623133725/manifest",
         label="*Enter IIIF manifest URL*:",
     )
-    manifest_url
+
     return (manifest_url,)
 
 
@@ -110,13 +115,6 @@ def _(manifest_url, straight_fetch_json):
 def _(jsonmanifest):
     thumbsdata = extract_thumbnails(jsonmanifest)
     return
-
-
-@app.cell
-def _(IIIFThumbnailGallery, json, thumbnails):
-    thumbnail_gallery = IIIFThumbnailGallery(items_json=json.dumps(thumbnails))
-    thumbnail_gallery
-    return (thumbnail_gallery,)
 
 
 @app.cell
