@@ -19,6 +19,12 @@ def _(mo):
     return
 
 
+@app.cell
+def _(manifest_url):
+    manifest_url
+    return
+
+
 @app.cell(hide_code=True)
 def _(viewer):
     viewer
@@ -51,7 +57,6 @@ def _(thumbnails):
         default_info_url = (thumbnails[0].get("info_url") or "").strip()
     else:
         default_info_url = ""
-
 
     return (default_info_url,)
 
@@ -101,7 +106,6 @@ def _(mo):
         value="https://manifests.sub.uni-goettingen.de/iiif/presentation/PPN623133725/manifest",
         label="*Enter IIIF manifest URL*:",
     )
-
     return (manifest_url,)
 
 
@@ -195,13 +199,24 @@ def thumb_from_service(service):
 
 
 @app.function
+def normalize_url(url_value):
+    if not isinstance(url_value, str):
+        return ""
+    clean = url_value.strip()
+    if clean.startswith("http://"):
+        return "https://" + clean[len("http://") :]
+    return clean
+
+
+@app.function
 def thumb_from_thumbnail_field(thumbnail):
     if isinstance(thumbnail, list) and thumbnail:
         thumbnail = thumbnail[0]
     if isinstance(thumbnail, str):
-        return thumbnail
+        return normalize_url(thumbnail)
     if isinstance(thumbnail, dict):
-        return thumbnail.get("id") or thumbnail.get("@id") or ""
+        thumb_id = thumbnail.get("id") or thumbnail.get("@id") or ""
+        return normalize_url(thumb_id)
     return ""
 
 
@@ -234,6 +249,10 @@ def extract_thumbnails(manifest_input):
                         body_item = anno_item.get("body", {})
                         if isinstance(body_item, dict):
                             canvas_thumb_url = thumb_from_service(body_item.get("service"))
+                            if not canvas_thumb_url:
+                                body_id = body_item.get("id") or body_item.get("@id") or ""
+                                if isinstance(body_id, str) and body_id.strip():
+                                    canvas_thumb_url = normalize_url(body_id)
 
         if not canvas_thumb_url:
             if isinstance(canvas_item.get("images"), list) and canvas_item["images"]:
@@ -273,10 +292,10 @@ def info_url_from_service(service):
 def info_url_from_image_id(image_id):
     if not isinstance(image_id, str) or not image_id.strip():
         return ""
-    clean = image_id.strip()
+    clean = normalize_url(image_id.strip())
     marker = "/full/"
     if marker in clean:
-        return f"{clean.split(marker, 1)[0].rstrip('/')}/info.json"
+        return normalize_url(f"{clean.split(marker, 1)[0].rstrip('/')}/info.json")
     return ""
 
 
