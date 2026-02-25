@@ -1,9 +1,13 @@
 # /// script
 # requires-python = ">=3.14"
 # dependencies = [
+#     "anywidget==0.9.21",
+#     "iiif-anywidget==0.1.0",
 #     "marimo>=0.20.2",
+#     "traitlets==5.14.3",
 # ]
 # ///
+
 import marimo
 
 __generated_with = "0.20.2"
@@ -15,6 +19,13 @@ def _():
     import marimo as mo
 
     return (mo,)
+
+
+@app.cell(hide_code=True)
+def _():
+    from iiif_anywidget import IIIFViewer
+
+    return (IIIFViewer,)
 
 
 @app.cell(hide_code=True)
@@ -32,12 +43,20 @@ def _(manifest_url):
 
 
 @app.cell(hide_code=True)
+def _(mo, selected_canvas_info_url):
+    mo.md(f"""
+    Viewing `{selected_canvas_info_url}`
+    """)
+    return
+
+
+@app.cell(hide_code=True)
 def _(mo, thumbnail_gallery, viewer):
     mo.hstack([
         viewer,
         mo.md(""),
         thumbnail_gallery
-    
+
     ], widths = [75, 5, 20])
     return
 
@@ -62,20 +81,28 @@ def _(mo):
     return
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ### Display
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    manifest_url = mo.ui.text(
+        value="https://manifests.sub.uni-goettingen.de/iiif/presentation/PPN623133725/manifest",
+        full_width=True,
+        label="*Enter IIIF manifest URL*:",
+    )
+    return (manifest_url,)
+
+
 @app.cell
 def _(IIIFViewer, selected_canvas_info_url):
     viewer = IIIFViewer(url=selected_canvas_info_url)
     return (viewer,)
-
-
-@app.cell
-def _(thumbnails):
-    if thumbnails and isinstance(thumbnails[0], dict):
-        default_info_url = (thumbnails[0].get("info_url") or "").strip()
-    else:
-        default_info_url = ""
-
-    return (default_info_url,)
 
 
 @app.cell
@@ -87,43 +114,31 @@ def _(IIIFThumbnailGallery, default_info_url, json, thumbnails):
     return (thumbnail_gallery,)
 
 
+@app.cell
+def _(thumbnails):
+    if thumbnails and isinstance(thumbnails[0], dict):
+        default_info_url = (thumbnails[0].get("info_url") or "").strip()
+    else:
+        default_info_url = ""
+    return (default_info_url,)
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## IIIF Viewer class
+    ### Manifest thumbnails
     """)
     return
 
 
 @app.cell
 def _(Path, anywidget, traitlets):
-    class IIIFViewer(anywidget.AnyWidget):
-        _esm = Path(__file__).parent / "iiif_viewer.js"
-        url = traitlets.Unicode().tag(sync=True)
-
     class IIIFThumbnailGallery(anywidget.AnyWidget):
         _esm = Path(__file__).parent / "iiif_thumbnails.js"
         items_json = traitlets.Unicode("[]").tag(sync=True)
         selected_info_url = traitlets.Unicode("").tag(sync=True)
 
-    return IIIFThumbnailGallery, IIIFViewer
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md("""
-    ## Manifest thumbnails
-    """)
-    return
-
-
-@app.cell
-def _(mo):
-    manifest_url = mo.ui.text(
-        value="https://manifests.sub.uni-goettingen.de/iiif/presentation/PPN623133725/manifest",
-        label="*Enter IIIF manifest URL*:",
-    )
-    return (manifest_url,)
+    return (IIIFThumbnailGallery,)
 
 
 @app.cell
@@ -142,14 +157,6 @@ def _(jsonmanifest):
 def _(thumbnail_gallery):
     selected_canvas_info_url = thumbnail_gallery.selected_info_url.strip()
     return (selected_canvas_info_url,)
-
-
-@app.cell
-def _(mo):
-    mo.md("""
-    Click a thumbnail to load that canvas in the slippy viewer above.
-    """)
-    return
 
 
 @app.cell(hide_code=True)
@@ -424,7 +431,7 @@ def _():
     from urllib.error import URLError
     from urllib.request import urlopen
 
-    return URLError, html, json, urlopen
+    return html, json, urlopen
 
 
 @app.cell
@@ -440,34 +447,6 @@ def _():
     from pathlib import Path
 
     return (Path,)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md("""
-    ### Deactivated
-    """)
-    return
-
-
-@app.cell
-def _(URLError, json):
-    def fancy_load_manifest(url_input: str):
-        if not url_input:
-            return None, ""
-
-        try:
-            return _fetch_json(url_input), ""
-        except URLError as fetch_error:
-            return None, f"Could not fetch manifest: {fetch_error}"
-        except json.JSONDecodeError:
-            return None, "Manifest response is not valid JSON."
-        except Exception as load_error:
-            return None, f"Unable to read manifest: {load_error}"
-
-
-
-    return
 
 
 if __name__ == "__main__":
