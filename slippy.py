@@ -19,21 +19,32 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(manifest_url):
     manifest_url
     return
 
 
 @app.cell(hide_code=True)
-def _(viewer):
-    viewer
+def _(mo, thumbnail_gallery, viewer):
+    mo.hstack([
+        viewer,
+        mo.md(""),
+        thumbnail_gallery
+    
+    ], widths = [75, 5, 20])
     return
 
 
 @app.cell(hide_code=True)
-def _(thumbnail_gallery):
-    thumbnail_gallery
+def _():
+    #viewer
+    return
+
+
+@app.cell(hide_code=True)
+def _():
+    #thumbnail_gallery
     return
 
 
